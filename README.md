@@ -42,7 +42,7 @@ uvicorn app.main:app --reload
 The service is available at `http://127.0.0.1:8000`. Useful endpoints:
 
 - Service information: `GET /`
-- Health check: `GET /api/v1/health`
+- Health check: `GET /health`
 - Swagger UI: `/docs`
 - ReDoc: `/redoc`
 - OpenAPI schema: `/openapi.json`

@@ -1,5 +1,8 @@
 """Application-level smoke tests."""
 
+import json
+
+from app.api import health
 from app.core.config import Settings
 from app.main import app
 
@@ -11,10 +14,35 @@ def test_application_metadata() -> None:
     assert app.openapi_url == "/openapi.json"
 
 
-def test_versioned_health_route_is_in_openapi_schema() -> None:
+def test_health_route_is_in_openapi_schema() -> None:
     schema = app.openapi()
 
-    assert "/api/v1/health" in schema["paths"]
+    assert "/health" in schema["paths"]
+    assert "/api/v1/health" not in schema["paths"]
+
+
+def test_health_check_reports_healthy_database(monkeypatch) -> None:
+    monkeypatch.setattr(health, "database_is_reachable", lambda: True)
+
+    response = health.health_check()
+
+    assert response.status_code == 200
+    assert json.loads(response.body) == {
+        "status": "healthy",
+        "dependencies": {"database": {"status": "healthy"}},
+    }
+
+
+def test_health_check_reports_unavailable_database(monkeypatch) -> None:
+    monkeypatch.setattr(health, "database_is_reachable", lambda: False)
+
+    response = health.health_check()
+
+    assert response.status_code == 503
+    assert json.loads(response.body) == {
+        "status": "unhealthy",
+        "dependencies": {"database": {"status": "unhealthy"}},
+    }
 
 
 def test_settings_have_safe_defaults() -> None:
