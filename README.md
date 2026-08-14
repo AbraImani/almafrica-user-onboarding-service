@@ -50,6 +50,22 @@ The service is available at `http://127.0.0.1:8000`. Useful endpoints:
 The health endpoint verifies that PostgreSQL accepts queries and returns `503` while
 the database is unavailable.
 
+## Register a user
+
+Create an unverified user with `POST /api/v1/auth/register`:
+
+```json
+{
+  "full_name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "password": "a-practical-password-123"
+}
+```
+
+Passwords must contain 12–128 characters, including at least one letter and one
+number. The API normalizes email addresses, stores only an Argon2id password hash,
+returns `201` when registration succeeds, and returns `409` for an existing email.
+
 ## Run with Docker Compose
 
 Optionally copy `.env.example` to `.env`, then build and start the API and PostgreSQL:

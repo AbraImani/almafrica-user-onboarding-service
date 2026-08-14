@@ -2,13 +2,13 @@
 
 import sys
 
-from argon2 import PasswordHasher
 from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.database import SessionLocal
+from app.core.security import hash_password
 from app.models.user import User, UserRole, normalize_email
 
 
@@ -61,9 +61,7 @@ def seed_administrator(settings: AdminSeedSettings) -> int:
                     )
                 return 0
 
-            password_hash = PasswordHasher().hash(
-                settings.admin_password.get_secret_value()
-            )
+            password_hash = hash_password(settings.admin_password.get_secret_value())
             administrator = User(
                 full_name=settings.admin_full_name,
                 email=settings.admin_email,
