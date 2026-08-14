@@ -107,6 +107,13 @@ the access token, then call `GET /api/v1/users/me`. Outside Swagger, send it in 
 Unknown emails and incorrect passwords both return the same `401` response. A
 regular user whose email is not verified receives `403`.
 
+Login is limited to five attempts per 60-second sliding window for each directly
+connected client IP. Excess attempts return `429` with a `Retry-After` header. The
+limiter is intentionally in memory for this challenge: counters reset when the API
+restarts and are not shared by multiple workers or replicas. Behind a reverse proxy,
+the proxy must be configured carefully so the application receives a trustworthy
+client address.
+
 Obtain a new access token with `POST /api/v1/auth/refresh`:
 
 ```json

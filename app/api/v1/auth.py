@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import enforce_login_rate_limit
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.core.security import (
@@ -336,6 +337,7 @@ def verify_email(
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
         status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_429_TOO_MANY_REQUESTS: {"model": ErrorResponse},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
     },
 )
@@ -343,6 +345,7 @@ def login(
     credentials: UserLoginRequest,
     session: Session = Depends(get_database_session),
     settings: Settings = Depends(get_settings),
+    _rate_limit: None = Depends(enforce_login_rate_limit),
 ) -> LoginResponse:
     """Authenticate credentials and create access and refresh tokens."""
     normalized_email = str(credentials.email)

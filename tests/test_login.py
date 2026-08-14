@@ -9,6 +9,8 @@ from pydantic import SecretStr
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
+from app.api.dependencies import get_login_rate_limiter
+from app.core.rate_limit import InMemoryRateLimiter
 from app.core.security import create_access_token, decode_access_token, hash_password
 from app.main import app
 from app.models.refresh_token import RefreshToken
@@ -64,10 +66,13 @@ def jwt_settings() -> Settings:
 
 @pytest.fixture
 def authentication_client(jwt_settings):
+    limiter = InMemoryRateLimiter(limit=5, window_seconds=60)
+
     def make_client(user: User | None):
         session = FakeSession(user)
         app.dependency_overrides[get_database_session] = lambda: session
         app.dependency_overrides[get_settings] = lambda: jwt_settings
+        app.dependency_overrides[get_login_rate_limiter] = lambda: limiter
         return TestClient(app), session
 
     yield make_client
