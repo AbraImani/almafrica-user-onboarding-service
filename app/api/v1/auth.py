@@ -12,17 +12,22 @@ from app.core.database import get_database_session
 from app.core.security import (
     JWTConfigurationError,
     create_access_token,
+    generate_refresh_token,
+    hash_refresh_token,
     hash_password,
     verify_dummy_password,
     verify_password,
 )
 from app.models.email_verification_token import EmailVerificationToken
+from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserRole
 from app.schemas.auth import (
     AccessTokenResponse,
     EmailVerificationRequest,
     EmailVerificationResponse,
     ErrorResponse,
+    LoginResponse,
+    RefreshTokenRequest,
     UserLoginRequest,
     UserRegistrationRequest,
     UserRegistrationResponse,
@@ -158,6 +163,42 @@ def authentication_unavailable() -> HTTPException:
     )
 
 
+def invalid_refresh_token() -> HTTPException:
+    """Return a safe response for an unknown refresh token."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": "invalid_refresh_token",
+            "message": "The refresh token is invalid.",
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def expired_refresh_token() -> HTTPException:
+    """Return a clear response for an expired refresh session."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": "refresh_token_expired",
+            "message": "The refresh token has expired.",
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def revoked_refresh_token() -> HTTPException:
+    """Return a clear response for a revoked refresh session."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": "refresh_token_revoked",
+            "message": "The refresh token has been revoked.",
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 @router.post(
     "/register",
     status_code=status.HTTP_201_CREATED,
@@ -290,7 +331,7 @@ def verify_email(
 
 @router.post(
     "/login",
-    response_model=AccessTokenResponse,
+    response_model=LoginResponse,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
         status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
@@ -301,8 +342,8 @@ def login(
     credentials: UserLoginRequest,
     session: Session = Depends(get_database_session),
     settings: Settings = Depends(get_settings),
-) -> AccessTokenResponse:
-    """Authenticate verified credentials and issue a short-lived access token."""
+) -> LoginResponse:
+    """Authenticate credentials and create access and refresh tokens."""
     normalized_email = str(credentials.email)
     plaintext_password = credentials.password.get_secret_value()
 
@@ -325,7 +366,76 @@ def login(
             role=user.role,
             settings=settings,
         )
+        generated_refresh_token = generate_refresh_token(settings=settings)
     except JWTConfigurationError as exc:
+        raise authentication_unavailable() from exc
+
+    refresh_session = RefreshToken(
+        user_id=user.id,
+        token_hash=generated_refresh_token.token_hash,
+        expires_at=generated_refresh_token.expires_at,
+    )
+    try:
+        session.add(refresh_session)
+        session.commit()
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise authentication_unavailable() from exc
+
+    return LoginResponse(
+        access_token=access_token,
+        expires_in=expires_in,
+        refresh_token=generated_refresh_token.raw_token,
+        refresh_expires_in=generated_refresh_token.expires_in,
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=AccessTokenResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+def refresh_access_token(
+    request: RefreshTokenRequest,
+    session: Session = Depends(get_database_session),
+    settings: Settings = Depends(get_settings),
+) -> AccessTokenResponse:
+    """Issue a new access token from an active refresh session."""
+    token_hash = hash_refresh_token(request.refresh_token.get_secret_value())
+    refreshed_at = datetime.now(timezone.utc)
+
+    try:
+        refresh_session = session.scalar(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        )
+        if refresh_session is None:
+            raise invalid_refresh_token()
+        if refresh_session.revoked_at is not None:
+            raise revoked_refresh_token()
+        if refresh_session.expires_at <= refreshed_at:
+            raise expired_refresh_token()
+
+        user = session.scalar(
+            select(User).where(User.id == refresh_session.user_id)
+        )
+        if user is None:
+            raise invalid_refresh_token()
+        if user.role == UserRole.USER and not user.is_verified:
+            raise invalid_refresh_token()
+
+        access_token, expires_in = create_access_token(
+            user_id=user.id,
+            role=user.role,
+            settings=settings,
+        )
+    except HTTPException:
+        session.rollback()
+        raise
+    except (SQLAlchemyError, JWTConfigurationError) as exc:
+        session.rollback()
         raise authentication_unavailable() from exc
 
     return AccessTokenResponse(

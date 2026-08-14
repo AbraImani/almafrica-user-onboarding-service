@@ -1,6 +1,8 @@
-"""Password and access-token security helpers."""
+"""Password, access-token, and refresh-token security helpers."""
 
+import hashlib
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -24,6 +26,16 @@ class JWTConfigurationError(Exception):
     """Raised when JWT signing has not been configured."""
 
 
+@dataclass(frozen=True)
+class GeneratedRefreshToken:
+    """Raw client value and persistence-safe refresh-session data."""
+
+    raw_token: str
+    token_hash: str
+    expires_at: datetime
+    expires_in: int
+
+
 def hash_password(password: str) -> str:
     """Hash a plaintext password with Argon2id."""
     return _password_hasher.hash(password)
@@ -40,6 +52,30 @@ def verify_password(password: str, password_hash: str) -> bool:
 def verify_dummy_password(password: str) -> None:
     """Perform Argon2 work when no user exists to reduce timing differences."""
     verify_password(password, _dummy_password_hash)
+
+
+def hash_refresh_token(raw_token: str) -> str:
+    """Return the SHA-256 digest persisted for a raw refresh token."""
+    if not raw_token:
+        raise ValueError("Refresh token must not be empty")
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def generate_refresh_token(
+    *,
+    settings: Settings,
+    now: datetime | None = None,
+) -> GeneratedRefreshToken:
+    """Generate a cryptographically secure opaque refresh token."""
+    issued_at = now or datetime.now(timezone.utc)
+    expires_in = settings.refresh_token_expire_days * 24 * 60 * 60
+    raw_token = secrets.token_urlsafe(32)
+    return GeneratedRefreshToken(
+        raw_token=raw_token,
+        token_hash=hash_refresh_token(raw_token),
+        expires_at=issued_at + timedelta(seconds=expires_in),
+        expires_in=expires_in,
+    )
 
 
 def create_access_token(

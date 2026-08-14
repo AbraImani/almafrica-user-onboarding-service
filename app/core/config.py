@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr | None = Field(default=None, min_length=32)
     jwt_algorithm: Literal["HS256"] = "HS256"
     jwt_access_token_expire_minutes: int = Field(default=15, ge=1, le=60)
+    refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
 
     @field_validator("jwt_secret", mode="before")
     @classmethod

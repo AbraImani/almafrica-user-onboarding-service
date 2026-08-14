@@ -16,8 +16,9 @@ Work in progress.
 - User registration with Argon2id password hashing
 - Local verification-email delivery through Mailpit
 - Login with short-lived JWT access tokens
+- Persisted seven-day refresh-token sessions
 
-Refresh tokens, logout, and object storage are not implemented yet.
+Logout, refresh-token rotation, and object storage are not implemented yet.
 
 ## Local setup
 
@@ -98,12 +99,25 @@ characters. Then authenticate a verified user with `POST /api/v1/auth/login`:
 }
 ```
 
-The response contains an HS256 Bearer access token valid for 15 minutes. In Swagger,
-use **Authorize** and paste the token, then call `GET /api/v1/users/me`. Outside
-Swagger, send it in the `Authorization: Bearer <token>` header.
+The response contains an HS256 Bearer access token valid for 15 minutes and an
+opaque refresh token valid for seven days. In Swagger, use **Authorize** and paste
+the access token, then call `GET /api/v1/users/me`. Outside Swagger, send it in the
+`Authorization: Bearer <token>` header.
 
 Unknown emails and incorrect passwords both return the same `401` response. A
 regular user whose email is not verified receives `403`.
+
+Obtain a new access token with `POST /api/v1/auth/refresh`:
+
+```json
+{
+  "refresh_token": "the-refresh-token-returned-by-login"
+}
+```
+
+Only a SHA-256 digest of each refresh token is stored. Unknown, expired, and revoked
+refresh sessions return `401`. Refresh-token rotation and logout are intentionally
+outside the current scope.
 
 ## Run with Docker Compose
 

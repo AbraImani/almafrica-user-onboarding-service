@@ -11,7 +11,9 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.core.security import create_access_token, decode_access_token, hash_password
 from app.main import app
+from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserRole
+from app.core.security import hash_refresh_token
 
 TEST_PASSWORD = "correct-password-123"
 TEST_JWT_SECRET = "test-only-jwt-secret-with-at-least-32-characters"
@@ -23,9 +25,22 @@ class FakeSession:
 
     def __init__(self, user: User | None) -> None:
         self.user = user
+        self.added_refresh_token: RefreshToken | None = None
+        self.commit_called = False
+        self.rollback_called = False
 
     def scalar(self, _statement):
         return self.user
+
+    def add(self, instance) -> None:
+        if isinstance(instance, RefreshToken):
+            self.added_refresh_token = instance
+
+    def commit(self) -> None:
+        self.commit_called = True
+
+    def rollback(self) -> None:
+        self.rollback_called = True
 
 
 def build_user(*, is_verified: bool = True) -> User:
@@ -53,7 +68,7 @@ def authentication_client(jwt_settings):
         session = FakeSession(user)
         app.dependency_overrides[get_database_session] = lambda: session
         app.dependency_overrides[get_settings] = lambda: jwt_settings
-        return TestClient(app)
+        return TestClient(app), session
 
     yield make_client
     app.dependency_overrides.clear()
@@ -68,13 +83,21 @@ def login_payload(*, password: str = TEST_PASSWORD) -> dict[str, str]:
 
 def test_successful_login(authentication_client, jwt_settings) -> None:
     user = build_user()
+    client, session = authentication_client(user)
 
-    with authentication_client(user) as client:
+    with client:
         response = client.post("/api/v1/auth/login", json=login_payload())
 
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert response.json()["expires_in"] == 900
+    assert response.json()["refresh_expires_in"] == 604800
+    assert session.added_refresh_token is not None
+    assert session.added_refresh_token.token_hash == hash_refresh_token(
+        response.json()["refresh_token"]
+    )
+    assert session.added_refresh_token.token_hash != response.json()["refresh_token"]
+    assert session.commit_called is True
     payload = decode_access_token(
         response.json()["access_token"],
         settings=jwt_settings,
@@ -86,7 +109,8 @@ def test_successful_login(authentication_client, jwt_settings) -> None:
 
 
 def test_wrong_password_returns_generic_error(authentication_client) -> None:
-    with authentication_client(build_user()) as client:
+    client, _ = authentication_client(build_user())
+    with client:
         response = client.post(
             "/api/v1/auth/login",
             json=login_payload(password="wrong-password-456"),
@@ -97,7 +121,8 @@ def test_wrong_password_returns_generic_error(authentication_client) -> None:
 
 
 def test_unknown_email_returns_same_generic_error(authentication_client) -> None:
-    with authentication_client(None) as client:
+    client, _ = authentication_client(None)
+    with client:
         response = client.post("/api/v1/auth/login", json=login_payload())
 
     assert response.status_code == 401
@@ -105,7 +130,8 @@ def test_unknown_email_returns_same_generic_error(authentication_client) -> None
 
 
 def test_unverified_user_is_rejected(authentication_client) -> None:
-    with authentication_client(build_user(is_verified=False)) as client:
+    client, _ = authentication_client(build_user(is_verified=False))
+    with client:
         response = client.post("/api/v1/auth/login", json=login_payload())
 
     assert response.status_code == 403
@@ -117,7 +143,8 @@ def test_invalid_access_token_is_rejected(
     authentication_client,
     access_token,
 ) -> None:
-    with authentication_client(build_user()) as client:
+    client, _ = authentication_client(build_user())
+    with client:
         response = client.get(
             "/api/v1/users/me",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -136,7 +163,8 @@ def test_expired_access_token_is_rejected(authentication_client, jwt_settings) -
         now=datetime.now(timezone.utc) - timedelta(minutes=16),
     )
 
-    with authentication_client(user) as client:
+    client, _ = authentication_client(user)
+    with client:
         response = client.get(
             "/api/v1/users/me",
             headers={"Authorization": f"Bearer {expired_token}"},
@@ -154,7 +182,8 @@ def test_valid_token_resolves_current_user(authentication_client, jwt_settings) 
         settings=jwt_settings,
     )
 
-    with authentication_client(user) as client:
+    client, _ = authentication_client(user)
+    with client:
         response = client.get(
             "/api/v1/users/me",
             headers={"Authorization": f"Bearer {access_token}"},

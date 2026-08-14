@@ -104,6 +104,19 @@ class AccessTokenResponse(BaseModel):
     expires_in: int
 
 
+class LoginResponse(AccessTokenResponse):
+    """Access and refresh credentials created by a successful login."""
+
+    refresh_token: str
+    refresh_expires_in: int
+
+
+class RefreshTokenRequest(BaseModel):
+    """Opaque refresh token used to obtain a new access token."""
+
+    refresh_token: SecretStr = Field(min_length=1, max_length=512)
+
+
 class CurrentUserResponse(BaseModel):
     """Safe representation returned for the authenticated user."""
 
