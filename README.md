@@ -70,6 +70,21 @@ creates a verification token that expires after 24 hours, and sends its raw valu
 only in the verification email. It returns `201` when registration succeeds and
 `409` for an existing email.
 
+## Verify an email address
+
+Copy the token from the Mailpit message and submit it to
+`POST /api/v1/auth/verify-email`:
+
+```json
+{
+  "token": "the-token-from-the-email"
+}
+```
+
+A valid token verifies the user and becomes unusable in one database transaction.
+Unknown tokens return `400`, already-used tokens return `409`, and expired tokens
+return `410`.
+
 ## Run with Docker Compose
 
 Optionally copy `.env.example` to `.env`, then build and start all services:

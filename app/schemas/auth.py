@@ -68,6 +68,19 @@ class UserRegistrationResponse(BaseModel):
     created_at: datetime
 
 
+class EmailVerificationRequest(BaseModel):
+    """Raw verification token delivered through the user's email."""
+
+    token: SecretStr = Field(min_length=1, max_length=512)
+
+
+class EmailVerificationResponse(BaseModel):
+    """Public result returned after an email is verified."""
+
+    message: str
+    is_verified: bool
+
+
 class ErrorDetail(BaseModel):
     """Stable machine-readable API error details."""
 

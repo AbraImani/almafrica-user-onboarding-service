@@ -1,5 +1,7 @@
 """Public authentication routes."""
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -10,12 +12,17 @@ from app.core.security import hash_password
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.user import User, UserRole
 from app.schemas.auth import (
+    EmailVerificationRequest,
+    EmailVerificationResponse,
     ErrorResponse,
     UserRegistrationRequest,
     UserRegistrationResponse,
 )
 from app.services.email import EmailDeliveryError, EmailService, get_email_service
-from app.services.email_verification import generate_email_verification_token
+from app.services.email_verification import (
+    generate_email_verification_token,
+    hash_email_verification_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -60,6 +67,50 @@ def email_delivery_unavailable() -> HTTPException:
         detail={
             "code": "email_delivery_unavailable",
             "message": "Registration is temporarily unavailable.",
+        },
+    )
+
+
+def invalid_verification_token() -> HTTPException:
+    """Return a safe response for a token that does not exist."""
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "code": "invalid_verification_token",
+            "message": "The verification token is invalid.",
+        },
+    )
+
+
+def expired_verification_token() -> HTTPException:
+    """Return a clear response for an expired token."""
+    return HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail={
+            "code": "verification_token_expired",
+            "message": "The verification token has expired.",
+        },
+    )
+
+
+def used_verification_token() -> HTTPException:
+    """Return a clear response for a token that was already consumed."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "verification_token_already_used",
+            "message": "The verification token has already been used.",
+        },
+    )
+
+
+def verification_unavailable() -> HTTPException:
+    """Return a safe response when verification cannot reach persistence."""
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "verification_unavailable",
+            "message": "Email verification is temporarily unavailable.",
         },
     )
 
@@ -135,3 +186,60 @@ def register_user(
         raise database_unavailable() from exc
 
     return user
+
+
+@router.post(
+    "/verify-email",
+    response_model=EmailVerificationResponse,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_409_CONFLICT: {"model": ErrorResponse},
+        status.HTTP_410_GONE: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+def verify_email(
+    verification: EmailVerificationRequest,
+    session: Session = Depends(get_database_session),
+) -> EmailVerificationResponse:
+    """Consume a valid token and verify its user in one transaction."""
+    token_hash = hash_email_verification_token(
+        verification.token.get_secret_value()
+    )
+    verified_at = datetime.now(timezone.utc)
+
+    try:
+        token_record = session.scalar(
+            select(EmailVerificationToken)
+            .where(EmailVerificationToken.token_hash == token_hash)
+            .with_for_update()
+        )
+        if token_record is None:
+            raise invalid_verification_token()
+        if token_record.used_at is not None:
+            raise used_verification_token()
+        if token_record.expires_at <= verified_at:
+            raise expired_verification_token()
+
+        user = session.scalar(
+            select(User)
+            .where(User.id == token_record.user_id)
+            .with_for_update()
+        )
+        if user is None:
+            raise invalid_verification_token()
+
+        user.is_verified = True
+        token_record.used_at = verified_at
+        session.commit()
+    except HTTPException:
+        session.rollback()
+        raise
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise verification_unavailable() from exc
+
+    return EmailVerificationResponse(
+        message="Email verified successfully.",
+        is_verified=True,
+    )
