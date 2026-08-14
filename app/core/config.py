@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import EmailStr, Field, SecretStr, field_validator
+from pydantic import AliasChoices, EmailStr, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -44,6 +44,25 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
     login_rate_limit_attempts: int = Field(default=5, ge=1, le=100)
     login_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    minio_endpoint: str = Field(
+        default="localhost:9000",
+        validation_alias=AliasChoices("MINIO_ENDPOINT", "ALMAFRICA_MINIO_ENDPOINT"),
+    )
+    minio_access_key: str = Field(
+        default="minioadmin",
+        min_length=3,
+        validation_alias=AliasChoices("MINIO_ACCESS_KEY", "ALMAFRICA_MINIO_ACCESS_KEY"),
+    )
+    minio_secret_key: SecretStr = Field(
+        default=SecretStr("minioadmin"),
+        min_length=8,
+        validation_alias=AliasChoices("MINIO_SECRET_KEY", "ALMAFRICA_MINIO_SECRET_KEY"),
+    )
+    minio_bucket_name: str = Field(
+        default="profile-images",
+        pattern=r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$",
+        validation_alias=AliasChoices("MINIO_BUCKET_NAME", "ALMAFRICA_MINIO_BUCKET_NAME"),
+    )
 
     @field_validator("jwt_secret", mode="before")
     @classmethod

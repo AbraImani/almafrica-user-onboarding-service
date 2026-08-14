@@ -139,6 +139,7 @@ class CurrentUserResponse(BaseModel):
     role: UserRole
     is_verified: bool
     profile_image_key: str | None
+    profile_image_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -181,6 +182,13 @@ class PasswordChangeResponse(BaseModel):
     """Public confirmation returned after a password change."""
 
     message: str
+
+
+class ProfileImageResponse(BaseModel):
+    """Usable private profile-image information."""
+
+    profile_image_key: str
+    profile_image_url: str
 
 
 class ErrorDetail(BaseModel):

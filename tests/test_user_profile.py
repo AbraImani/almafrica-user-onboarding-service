@@ -79,6 +79,7 @@ def test_authenticated_user_can_read_own_profile(profile_client) -> None:
         "role": "USER",
         "is_verified": True,
         "profile_image_key": None,
+        "profile_image_url": None,
         "created_at": user.created_at.isoformat().replace("+00:00", "Z"),
         "updated_at": user.updated_at.isoformat().replace("+00:00", "Z"),
     }
