@@ -61,3 +61,24 @@ docker compose up --build
 The API is available at `http://127.0.0.1:8000`. Inside the Compose network it
 connects to PostgreSQL using the `postgres` service name. PostgreSQL data is kept
 in the named `postgres_data` volume between container restarts.
+
+## Database migrations
+
+Alembic reads the same `ALMAFRICA_DATABASE_*` settings as the application. With
+PostgreSQL running, apply all pending migrations from the project directory:
+
+```bash
+python -m alembic upgrade head
+```
+
+Create a migration after changing SQLAlchemy model metadata:
+
+```bash
+python -m alembic revision --autogenerate -m "describe the schema change"
+```
+
+Revert the latest migration:
+
+```bash
+python -m alembic downgrade -1
+```
