@@ -112,3 +112,18 @@ def get_current_user(
     if user.role == UserRole.USER and not user.is_verified:
         raise invalid_access_token()
     return user
+
+
+def require_administrator(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Require the authenticated user to have the administrator role."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "administrator_access_required",
+                "message": "Administrator access is required.",
+            },
+        )
+    return current_user
