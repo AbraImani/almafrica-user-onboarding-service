@@ -14,7 +14,7 @@ Work in progress.
 - OpenAPI documentation
 - PostgreSQL connectivity through SQLAlchemy 2
 
-Database models, authentication, object storage, and email are not implemented yet.
+Registration, authentication, object storage, and email are not implemented yet.
 
 ## Local setup
 
@@ -82,3 +82,16 @@ Revert the latest migration:
 ```bash
 python -m alembic downgrade -1
 ```
+
+## Seed the administrator
+
+Set `ADMIN_FULL_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in `.env`. Use a strong,
+unique password of at least 12 characters, then run:
+
+```bash
+python -m app.scripts.seed_admin
+```
+
+The command normalizes the email, hashes the password with Argon2id, and creates a
+verified `ADMIN`. It is safe to run repeatedly: an existing email is reported and
+left unchanged.
