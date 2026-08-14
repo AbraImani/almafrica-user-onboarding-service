@@ -133,7 +133,28 @@ class CurrentUserResponse(BaseModel):
     email: EmailStr
     role: UserRole
     is_verified: bool
+    profile_image_key: str | None
     created_at: datetime
+    updated_at: datetime
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Strict self-profile fields a user is allowed to change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=2, max_length=255),
+    ]
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        """Reject names without any alphabetic character."""
+        if not any(character.isalpha() for character in value):
+            raise ValueError("Full name must contain at least one letter")
+        return value
 
 
 class ErrorDetail(BaseModel):

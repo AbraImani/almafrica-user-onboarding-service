@@ -94,8 +94,8 @@ characters. Then authenticate a verified user with `POST /api/v1/auth/login`:
 
 ```json
 {
-  "email": "ada@example.com",
-  "password": "a-practical-password-123"
+  "email": "ada@ucbukabu.ac.cd",
+  "password": "Saisie404"
 }
 ```
 
@@ -129,6 +129,20 @@ current scope.
 End a refresh session with `POST /api/v1/auth/logout`, using the same request body
 as `/refresh`. Logout is idempotent: unknown or already-revoked tokens receive the
 same `200` response, while the persisted session remains unusable for refresh.
+
+## Self-profile
+
+Authenticated users can read their own profile with `GET /api/v1/users/me` and
+update only their name with `PATCH /api/v1/users/me`:
+
+```json
+{
+  "full_name": "Ada Musane Updated"
+}
+```
+
+The authenticated UUID always comes from the access token. Email, role, verification
+status, and unknown fields are rejected rather than assigned to the user model.
 
 ## Run with Docker Compose
 
