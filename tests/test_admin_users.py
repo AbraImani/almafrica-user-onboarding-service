@@ -103,6 +103,14 @@ def test_regular_user_receives_forbidden() -> None:
     assert session.list_statement is None
 
 
+def test_unauthenticated_admin_user_listing_is_rejected() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/v1/admin/users")
+
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "invalid_access_token"
+
+
 def test_user_listing_pagination() -> None:
     administrator = build_user(full_name="Admin User", role=UserRole.ADMIN)
     page_users = [build_user(full_name="User Three"), build_user(full_name="User Four")]

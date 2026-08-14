@@ -128,6 +128,21 @@ def test_email_cannot_be_changed(profile_client) -> None:
     assert session.commit_called is False
 
 
+def test_user_id_cannot_be_changed(profile_client) -> None:
+    client, user, session = profile_client()
+    original_user_id = user.id
+
+    with client:
+        response = client.patch(
+            "/api/v1/users/me",
+            json={"full_name": "Ada MUSANE", "id": str(uuid4())},
+        )
+
+    assert response.status_code == 422
+    assert user.id == original_user_id
+    assert session.commit_called is False
+
+
 def test_role_cannot_be_changed(profile_client) -> None:
     client, user, session = profile_client()
 
