@@ -117,6 +117,12 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: SecretStr = Field(min_length=1, max_length=512)
 
 
+class LogoutResponse(BaseModel):
+    """Idempotent result returned after ending a refresh session."""
+
+    message: str
+
+
 class CurrentUserResponse(BaseModel):
     """Safe representation returned for the authenticated user."""
 

@@ -18,7 +18,7 @@ Work in progress.
 - Login with short-lived JWT access tokens
 - Persisted seven-day refresh-token sessions
 
-Logout, refresh-token rotation, and object storage are not implemented yet.
+Refresh-token rotation and object storage are not implemented yet.
 
 ## Local setup
 
@@ -116,8 +116,12 @@ Obtain a new access token with `POST /api/v1/auth/refresh`:
 ```
 
 Only a SHA-256 digest of each refresh token is stored. Unknown, expired, and revoked
-refresh sessions return `401`. Refresh-token rotation and logout are intentionally
-outside the current scope.
+refresh sessions return `401`. Refresh-token rotation is intentionally outside the
+current scope.
+
+End a refresh session with `POST /api/v1/auth/logout`, using the same request body
+as `/refresh`. Logout is idempotent: unknown or already-revoked tokens receive the
+same `200` response, while the persisted session remains unusable for refresh.
 
 ## Run with Docker Compose
 

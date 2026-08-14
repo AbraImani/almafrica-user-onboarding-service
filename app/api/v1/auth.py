@@ -27,6 +27,7 @@ from app.schemas.auth import (
     EmailVerificationResponse,
     ErrorResponse,
     LoginResponse,
+    LogoutResponse,
     RefreshTokenRequest,
     UserLoginRequest,
     UserRegistrationRequest,
@@ -442,3 +443,34 @@ def refresh_access_token(
         access_token=access_token,
         expires_in=expires_in,
     )
+
+
+@router.post(
+    "/logout",
+    response_model=LogoutResponse,
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+def logout(
+    request: RefreshTokenRequest,
+    session: Session = Depends(get_database_session),
+) -> LogoutResponse:
+    """Idempotently revoke the refresh session represented by a raw token."""
+    token_hash = hash_refresh_token(request.refresh_token.get_secret_value())
+    revoked_at = datetime.now(timezone.utc)
+
+    try:
+        refresh_session = session.scalar(
+            select(RefreshToken)
+            .where(RefreshToken.token_hash == token_hash)
+            .with_for_update()
+        )
+        if refresh_session is not None and refresh_session.revoked_at is None:
+            refresh_session.revoked_at = revoked_at
+        session.commit()
+    except SQLAlchemyError as exc:
+        session.rollback()
+        raise authentication_unavailable() from exc
+
+    return LogoutResponse(message="Logged out successfully.")
