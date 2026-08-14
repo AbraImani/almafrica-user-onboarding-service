@@ -7,14 +7,23 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
-from app.core.security import hash_password
+from app.core.security import (
+    JWTConfigurationError,
+    create_access_token,
+    hash_password,
+    verify_dummy_password,
+    verify_password,
+)
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.user import User, UserRole
 from app.schemas.auth import (
+    AccessTokenResponse,
     EmailVerificationRequest,
     EmailVerificationResponse,
     ErrorResponse,
+    UserLoginRequest,
     UserRegistrationRequest,
     UserRegistrationResponse,
 )
@@ -111,6 +120,40 @@ def verification_unavailable() -> HTTPException:
         detail={
             "code": "verification_unavailable",
             "message": "Email verification is temporarily unavailable.",
+        },
+    )
+
+
+def invalid_credentials() -> HTTPException:
+    """Return one response for unknown emails and incorrect passwords."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": "invalid_credentials",
+            "message": "Invalid email or password.",
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def unverified_email() -> HTTPException:
+    """Reject a regular user whose email ownership is not verified."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "email_not_verified",
+            "message": "Verify your email address before signing in.",
+        },
+    )
+
+
+def authentication_unavailable() -> HTTPException:
+    """Return a safe response for login infrastructure failures."""
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "authentication_unavailable",
+            "message": "Authentication is temporarily unavailable.",
         },
     )
 
@@ -242,4 +285,50 @@ def verify_email(
     return EmailVerificationResponse(
         message="Email verified successfully.",
         is_verified=True,
+    )
+
+
+@router.post(
+    "/login",
+    response_model=AccessTokenResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+def login(
+    credentials: UserLoginRequest,
+    session: Session = Depends(get_database_session),
+    settings: Settings = Depends(get_settings),
+) -> AccessTokenResponse:
+    """Authenticate verified credentials and issue a short-lived access token."""
+    normalized_email = str(credentials.email)
+    plaintext_password = credentials.password.get_secret_value()
+
+    try:
+        user = session.scalar(select(User).where(User.email == normalized_email))
+    except SQLAlchemyError as exc:
+        raise authentication_unavailable() from exc
+
+    if user is None:
+        verify_dummy_password(plaintext_password)
+        raise invalid_credentials()
+    if not verify_password(plaintext_password, user.password_hash):
+        raise invalid_credentials()
+    if user.role == UserRole.USER and not user.is_verified:
+        raise unverified_email()
+
+    try:
+        access_token, expires_in = create_access_token(
+            user_id=user.id,
+            role=user.role,
+            settings=settings,
+        )
+    except JWTConfigurationError as exc:
+        raise authentication_unavailable() from exc
+
+    return AccessTokenResponse(
+        access_token=access_token,
+        expires_in=expires_in,
     )

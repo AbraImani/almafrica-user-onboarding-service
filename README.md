@@ -15,8 +15,9 @@ Work in progress.
 - PostgreSQL connectivity through SQLAlchemy 2
 - User registration with Argon2id password hashing
 - Local verification-email delivery through Mailpit
+- Login with short-lived JWT access tokens
 
-Login, JWT authentication, and object storage are not implemented yet.
+Refresh tokens, logout, and object storage are not implemented yet.
 
 ## Local setup
 
@@ -84,6 +85,25 @@ Copy the token from the Mailpit message and submit it to
 A valid token verifies the user and becomes unusable in one database transaction.
 Unknown tokens return `400`, already-used tokens return `409`, and expired tokens
 return `410`.
+
+## Login and authenticated user
+
+Set `ALMAFRICA_JWT_SECRET` to a cryptographically random value of at least 32
+characters. Then authenticate a verified user with `POST /api/v1/auth/login`:
+
+```json
+{
+  "email": "ada@example.com",
+  "password": "a-practical-password-123"
+}
+```
+
+The response contains an HS256 Bearer access token valid for 15 minutes. In Swagger,
+use **Authorize** and paste the token, then call `GET /api/v1/users/me`. Outside
+Swagger, send it in the `Authorization: Bearer <token>` header.
+
+Unknown emails and incorrect passwords both return the same `401` response. A
+regular user whose email is not verified receives `403`.
 
 ## Run with Docker Compose
 

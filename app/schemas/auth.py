@@ -81,6 +81,42 @@ class EmailVerificationResponse(BaseModel):
     is_verified: bool
 
 
+class UserLoginRequest(BaseModel):
+    """Credentials accepted by the login endpoint."""
+
+    email: Annotated[EmailStr, Field(max_length=320)]
+    password: SecretStr = Field(min_length=1, max_length=128)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_login_email(cls, value: object) -> object:
+        """Normalize login email exactly like registration email."""
+        if isinstance(value, str):
+            return normalize_email(value)
+        return value
+
+
+class AccessTokenResponse(BaseModel):
+    """Bearer access token returned after successful authentication."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class CurrentUserResponse(BaseModel):
+    """Safe representation returned for the authenticated user."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    full_name: str
+    email: EmailStr
+    role: UserRole
+    is_verified: bool
+    created_at: datetime
+
+
 class ErrorDetail(BaseModel):
     """Stable machine-readable API error details."""
 

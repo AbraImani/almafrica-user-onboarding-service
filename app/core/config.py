@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import EmailStr, Field, SecretStr
+from pydantic import EmailStr, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -38,6 +38,17 @@ class Settings(BaseSettings):
         default="http://localhost:8000/api/v1/auth/verify-email",
         pattern=r"^https?://",
     )
+    jwt_secret: SecretStr | None = Field(default=None, min_length=32)
+    jwt_algorithm: Literal["HS256"] = "HS256"
+    jwt_access_token_expire_minutes: int = Field(default=15, ge=1, le=60)
+
+    @field_validator("jwt_secret", mode="before")
+    @classmethod
+    def empty_jwt_secret_is_unset(cls, value: object) -> object:
+        """Treat an empty environment variable as missing, never as a signing key."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def sqlalchemy_database_url(self) -> URL:
