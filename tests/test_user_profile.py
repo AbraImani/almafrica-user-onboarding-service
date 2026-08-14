@@ -141,6 +141,39 @@ def test_role_cannot_be_changed(profile_client) -> None:
     assert session.commit_called is False
 
 
+def test_verification_status_cannot_be_changed(profile_client) -> None:
+    client, user, session = profile_client()
+
+    with client:
+        response = client.patch(
+            "/api/v1/users/me",
+            json={"full_name": "Ada MUSANE", "is_verified": False},
+        )
+
+    assert response.status_code == 422
+    assert user.is_verified is True
+    assert session.commit_called is False
+
+
+def test_profile_endpoints_cannot_target_a_caller_supplied_user_id(
+    profile_client,
+) -> None:
+    client, current_user, session = profile_client()
+    other_user_id = uuid4()
+
+    with client:
+        get_response = client.get(f"/api/v1/users/{other_user_id}")
+        patch_response = client.patch(
+            f"/api/v1/users/{other_user_id}",
+            json={"full_name": "Changed Other User"},
+        )
+
+    assert get_response.status_code == 404
+    assert patch_response.status_code == 404
+    assert current_user.full_name == "Ada MUSANE"
+    assert session.commit_called is False
+
+
 def test_correct_current_password_changes_password(profile_client) -> None:
     client, user, session = profile_client()
 

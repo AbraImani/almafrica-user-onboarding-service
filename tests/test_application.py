@@ -21,6 +21,12 @@ def test_health_route_is_in_openapi_schema() -> None:
     assert "/api/v1/health" not in schema["paths"]
 
 
+def test_no_api_response_schema_exposes_password_hash() -> None:
+    schema = app.openapi()
+
+    assert "password_hash" not in json.dumps(schema)
+
+
 def test_health_check_reports_healthy_database(monkeypatch) -> None:
     monkeypatch.setattr(health, "database_is_reachable", lambda: True)
 
