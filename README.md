@@ -13,8 +13,10 @@ Work in progress.
 - Versioned API routing
 - OpenAPI documentation
 - PostgreSQL connectivity through SQLAlchemy 2
+- User registration with Argon2id password hashing
+- Local verification-email delivery through Mailpit
 
-Registration, authentication, object storage, and email are not implemented yet.
+Login, JWT authentication, and object storage are not implemented yet.
 
 ## Local setup
 
@@ -64,18 +66,21 @@ Create an unverified user with `POST /api/v1/auth/register`:
 
 Passwords must contain 12–128 characters, including at least one letter and one
 number. The API normalizes email addresses, stores only an Argon2id password hash,
-returns `201` when registration succeeds, and returns `409` for an existing email.
+creates a verification token that expires after 24 hours, and sends its raw value
+only in the verification email. It returns `201` when registration succeeds and
+`409` for an existing email.
 
 ## Run with Docker Compose
 
-Optionally copy `.env.example` to `.env`, then build and start the API and PostgreSQL:
+Optionally copy `.env.example` to `.env`, then build and start all services:
 
 ```bash
 docker compose up --build
 ```
 
-The API is available at `http://127.0.0.1:8000`. Inside the Compose network it
-connects to PostgreSQL using the `postgres` service name. PostgreSQL data is kept
+The API is available at `http://127.0.0.1:8000`, and the Mailpit inbox is available
+at `http://127.0.0.1:8025`. Inside the Compose network, the API connects to
+PostgreSQL through `postgres` and to SMTP through `mailpit`. PostgreSQL data is kept
 in the named `postgres_data` volume between container restarts.
 
 ## Database migrations
@@ -116,6 +121,6 @@ left unchanged.
 
 Verification tokens use 256 bits of cryptographically secure randomness and expire
 24 hours after generation. Only a SHA-256 digest is persisted; the raw token exists
-only in memory so a future delivery mechanism can send it to the user. Token records
-are single-use through `used_at`, and deleting a user automatically deletes their
-verification tokens through the database foreign key.
+only in memory until the SMTP service includes it in the verification link. Token
+records are single-use through `used_at`, and deleting a user automatically deletes
+their verification tokens through the database foreign key.

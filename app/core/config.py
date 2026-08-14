@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import EmailStr, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     database_user: str = "almafrica"
     database_password: SecretStr = SecretStr("almafrica")
     database_connect_timeout_seconds: int = Field(default=3, ge=1, le=30)
+    smtp_host: str = "localhost"
+    smtp_port: int = Field(default=1025, ge=1, le=65535)
+    smtp_from_email: EmailStr = "no-reply@example.com"
+    smtp_from_name: str = Field(default="Almafrica", min_length=1, max_length=100)
+    smtp_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    email_verification_url: str = Field(
+        default="http://localhost:8000/api/v1/auth/verify-email",
+        pattern=r"^https?://",
+    )
 
     @property
     def sqlalchemy_database_url(self) -> URL:
