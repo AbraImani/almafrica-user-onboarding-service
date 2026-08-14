@@ -17,6 +17,16 @@ from pydantic import (
 from app.models.user import UserRole, normalize_email
 
 
+def validate_password_policy(password: SecretStr) -> SecretStr:
+    """Apply the password policy shared by registration and password changes."""
+    plaintext = password.get_secret_value()
+    if not any(character.isalpha() for character in plaintext):
+        raise ValueError("Password must contain at least one letter")
+    if not any(character.isdigit() for character in plaintext):
+        raise ValueError("Password must contain at least one number")
+    return password
+
+
 class UserRegistrationRequest(BaseModel):
     """Validated public registration input."""
 
@@ -47,12 +57,7 @@ class UserRegistrationRequest(BaseModel):
     @classmethod
     def validate_password_policy(cls, value: SecretStr) -> SecretStr:
         """Require a practical minimum mix of letters and numbers."""
-        password = value.get_secret_value()
-        if not any(character.isalpha() for character in password):
-            raise ValueError("Password must contain at least one letter")
-        if not any(character.isdigit() for character in password):
-            raise ValueError("Password must contain at least one number")
-        return value
+        return validate_password_policy(value)
 
 
 class UserRegistrationResponse(BaseModel):
@@ -155,6 +160,27 @@ class UserProfileUpdateRequest(BaseModel):
         if not any(character.isalpha() for character in value):
             raise ValueError("Full name must contain at least one letter")
         return value
+
+
+class PasswordChangeRequest(BaseModel):
+    """Secrets required to change the authenticated user's password."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: SecretStr = Field(min_length=1, max_length=128)
+    new_password: SecretStr = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_policy(cls, value: SecretStr) -> SecretStr:
+        """Apply the same practical policy used during registration."""
+        return validate_password_policy(value)
+
+
+class PasswordChangeResponse(BaseModel):
+    """Public confirmation returned after a password change."""
+
+    message: str
 
 
 class ErrorDetail(BaseModel):

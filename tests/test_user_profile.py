@@ -8,8 +8,12 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_database_session
+from app.core.security import hash_password, verify_password
 from app.main import app
 from app.models.user import User, UserRole
+
+CURRENT_PASSWORD = "TEST24-AdaMus"
+NEW_PASSWORD = "NewPassword24-Ada"
 
 
 class FakeProfileSession:
@@ -18,6 +22,7 @@ class FakeProfileSession:
     def __init__(self) -> None:
         self.commit_called = False
         self.rollback_called = False
+        self.execute_called = False
 
     def commit(self) -> None:
         self.commit_called = True
@@ -28,12 +33,15 @@ class FakeProfileSession:
     def rollback(self) -> None:
         self.rollback_called = True
 
+    def execute(self, _statement) -> None:
+        self.execute_called = True
+
 
 def build_user() -> User:
     user = User(
         full_name="Ada MUSANE",
         email="ada.musane@ucbukavu.ac.cd",
-        password_hash="$argon2id$private-test-hash",
+        password_hash=hash_password(CURRENT_PASSWORD),
         role=UserRole.USER,
         is_verified=True,
         profile_image_key=None,
@@ -131,3 +139,81 @@ def test_role_cannot_be_changed(profile_client) -> None:
     assert response.status_code == 422
     assert user.role == UserRole.USER
     assert session.commit_called is False
+
+
+def test_correct_current_password_changes_password(profile_client) -> None:
+    client, user, session = profile_client()
+
+    with client:
+        response = client.post(
+            "/api/v1/users/me/change-password",
+            json={
+                "current_password": CURRENT_PASSWORD,
+                "new_password": NEW_PASSWORD,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "message": "Password changed successfully. Please sign in again."
+    }
+    assert session.execute_called is True
+    assert session.commit_called is True
+    assert verify_password(NEW_PASSWORD, user.password_hash) is True
+
+
+def test_wrong_current_password_is_rejected(profile_client) -> None:
+    client, user, session = profile_client()
+    original_hash = user.password_hash
+
+    with client:
+        response = client.post(
+            "/api/v1/users/me/change-password",
+            json={
+                "current_password": "WrongPassword24",
+                "new_password": NEW_PASSWORD,
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "current_password_incorrect"
+    assert user.password_hash == original_hash
+    assert session.execute_called is False
+    assert session.commit_called is False
+
+
+def test_weak_new_password_is_rejected(profile_client) -> None:
+    client, user, session = profile_client()
+    original_hash = user.password_hash
+
+    with client:
+        response = client.post(
+            "/api/v1/users/me/change-password",
+            json={
+                "current_password": CURRENT_PASSWORD,
+                "new_password": "letters-only-password",
+            },
+        )
+
+    assert response.status_code == 422
+    assert user.password_hash == original_hash
+    assert session.execute_called is False
+    assert session.commit_called is False
+
+
+def test_changed_password_is_hashed_before_persistence(profile_client) -> None:
+    client, user, _ = profile_client()
+
+    with client:
+        response = client.post(
+            "/api/v1/users/me/change-password",
+            json={
+                "current_password": CURRENT_PASSWORD,
+                "new_password": NEW_PASSWORD,
+            },
+        )
+
+    assert response.status_code == 200
+    assert user.password_hash != NEW_PASSWORD
+    assert user.password_hash.startswith("$argon2id$")
+    assert verify_password(NEW_PASSWORD, user.password_hash) is True
