@@ -23,3 +23,17 @@ def test_settings_have_safe_defaults() -> None:
     assert settings.environment == "local"
     assert settings.debug is False
     assert settings.api_v1_prefix == "/api/v1"
+    assert settings.database_host == "localhost"
+    assert settings.database_connect_timeout_seconds == 3
+    assert settings.sqlalchemy_database_url.drivername == "postgresql+psycopg"
+
+
+def test_database_url_escapes_credentials() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_user="user@example.com",
+        database_password="secret/value",
+    )
+
+    assert settings.sqlalchemy_database_url.username == "user@example.com"
+    assert settings.sqlalchemy_database_url.password == "secret/value"

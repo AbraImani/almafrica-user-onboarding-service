@@ -1,0 +1,54 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ALMAFRICA_APP_NAME: ${ALMAFRICA_APP_NAME:-Almafrica User Onboarding Service}
+      ALMAFRICA_APP_VERSION: ${ALMAFRICA_APP_VERSION:-0.1.0}
+      ALMAFRICA_ENVIRONMENT: ${ALMAFRICA_ENVIRONMENT:-local}
+      ALMAFRICA_DEBUG: ${ALMAFRICA_DEBUG:-false}
+      ALMAFRICA_API_V1_PREFIX: ${ALMAFRICA_API_V1_PREFIX:-/api/v1}
+      ALMAFRICA_DATABASE_HOST: postgres
+      ALMAFRICA_DATABASE_PORT: 5432
+      ALMAFRICA_DATABASE_NAME: ${ALMAFRICA_DATABASE_NAME:-almafrica}
+      ALMAFRICA_DATABASE_USER: ${ALMAFRICA_DATABASE_USER:-almafrica}
+      ALMAFRICA_DATABASE_PASSWORD: ${ALMAFRICA_DATABASE_PASSWORD:-almafrica}
+      ALMAFRICA_DATABASE_CONNECT_TIMEOUT_SECONDS: ${ALMAFRICA_DATABASE_CONNECT_TIMEOUT_SECONDS:-3}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${ALMAFRICA_DATABASE_NAME:-almafrica}
+      POSTGRES_USER: ${ALMAFRICA_DATABASE_USER:-almafrica}
+      POSTGRES_PASSWORD: ${ALMAFRICA_DATABASE_PASSWORD:-almafrica}
+    ports:
+      - "${ALMAFRICA_DATABASE_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  postgres_data:
