@@ -59,12 +59,14 @@ def build_refresh_session(
     expires_at: datetime | None = None,
     revoked_at: datetime | None = None,
 ) -> RefreshToken:
-    return RefreshToken(
+    refresh_session = RefreshToken(
         user_id=user.id,
         token_hash=hash_refresh_token(RAW_REFRESH_TOKEN),
         expires_at=expires_at or datetime.now(timezone.utc) + timedelta(days=1),
         revoked_at=revoked_at,
     )
+    refresh_session.id = uuid4()
+    return refresh_session
 
 
 @pytest.fixture
@@ -89,7 +91,7 @@ def refresh_client(jwt_settings):
 
 def test_refresh_success(refresh_client, jwt_settings) -> None:
     user = build_user()
-    client, _ = refresh_client(build_refresh_session(user), user)
+    client, session = refresh_client(build_refresh_session(user), user)
 
     with client:
         response = client.post(
@@ -106,6 +108,7 @@ def test_refresh_success(refresh_client, jwt_settings) -> None:
         settings=jwt_settings,
     )
     assert payload["sub"] == str(user.id)
+    assert payload["sid"] == str(session.refresh_session.id)
 
 
 def test_invalid_refresh_token_is_rejected(refresh_client) -> None:

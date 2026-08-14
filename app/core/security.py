@@ -81,6 +81,7 @@ def generate_refresh_token(
 def create_access_token(
     *,
     user_id: UUID,
+    session_id: UUID,
     role: UserRole,
     settings: Settings,
     now: datetime | None = None,
@@ -92,6 +93,7 @@ def create_access_token(
     expires_at = issued_at + timedelta(seconds=expires_in)
     payload = {
         "sub": str(user_id),
+        "sid": str(session_id),
         "role": role.value,
         "iat": issued_at,
         "exp": expires_at,
@@ -112,7 +114,7 @@ def decode_access_token(token: str, *, settings: Settings) -> dict[str, Any]:
             token,
             secret,
             algorithms=[settings.jwt_algorithm],
-            options={"require": ["sub", "iat", "exp"]},
+            options={"require": ["sub", "sid", "iat", "exp"]},
         )
     except jwt.InvalidTokenError as exc:
         raise AccessTokenError("Invalid access token") from exc

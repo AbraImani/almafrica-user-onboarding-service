@@ -364,16 +364,7 @@ def login(
     if user.role == UserRole.USER and not user.is_verified:
         raise unverified_email()
 
-    try:
-        access_token, expires_in = create_access_token(
-            user_id=user.id,
-            role=user.role,
-            settings=settings,
-        )
-        generated_refresh_token = generate_refresh_token(settings=settings)
-    except JWTConfigurationError as exc:
-        raise authentication_unavailable() from exc
-
+    generated_refresh_token = generate_refresh_token(settings=settings)
     refresh_session = RefreshToken(
         user_id=user.id,
         token_hash=generated_refresh_token.token_hash,
@@ -381,8 +372,15 @@ def login(
     )
     try:
         session.add(refresh_session)
+        session.flush()
+        access_token, expires_in = create_access_token(
+            user_id=user.id,
+            session_id=refresh_session.id,
+            role=user.role,
+            settings=settings,
+        )
         session.commit()
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, JWTConfigurationError) as exc:
         session.rollback()
         raise authentication_unavailable() from exc
 
@@ -432,6 +430,7 @@ def refresh_access_token(
 
         access_token, expires_in = create_access_token(
             user_id=user.id,
+            session_id=refresh_session.id,
             role=user.role,
             settings=settings,
         )

@@ -11,11 +11,15 @@ from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.api.dependencies import get_login_rate_limiter
 from app.core.rate_limit import InMemoryRateLimiter
-from app.core.security import create_access_token, decode_access_token, hash_password
+from app.core.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    hash_refresh_token,
+)
 from app.main import app
 from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserRole
-from app.core.security import hash_refresh_token
 
 TEST_PASSWORD = "correct-password-123"
 TEST_JWT_SECRET = "test-only-jwt-secret-with-at-least-32-characters"
@@ -32,11 +36,21 @@ class FakeSession:
         self.rollback_called = False
 
     def scalar(self, _statement):
+        entity = _statement.column_descriptions[0].get("entity")
+        if entity is RefreshToken:
+            return self.added_refresh_token
         return self.user
 
     def add(self, instance) -> None:
         if isinstance(instance, RefreshToken):
             self.added_refresh_token = instance
+
+    def flush(self) -> None:
+        if (
+            self.added_refresh_token is not None
+            and self.added_refresh_token.id is None
+        ):
+            self.added_refresh_token.id = uuid4()
 
     def commit(self) -> None:
         self.commit_called = True
@@ -108,6 +122,7 @@ def test_successful_login(authentication_client, jwt_settings) -> None:
         settings=jwt_settings,
     )
     assert payload["sub"] == str(user.id)
+    assert payload["sid"] == str(session.added_refresh_token.id)
     assert payload["role"] == "USER"
     assert "iat" in payload
     assert "exp" in payload
@@ -163,6 +178,7 @@ def test_expired_access_token_is_rejected(authentication_client, jwt_settings) -
     user = build_user()
     expired_token, _ = create_access_token(
         user_id=user.id,
+        session_id=uuid4(),
         role=user.role,
         settings=jwt_settings,
         now=datetime.now(timezone.utc) - timedelta(minutes=16),
@@ -181,13 +197,21 @@ def test_expired_access_token_is_rejected(authentication_client, jwt_settings) -
 
 def test_valid_token_resolves_current_user(authentication_client, jwt_settings) -> None:
     user = build_user()
+    client, session = authentication_client(user)
+    refresh_session = RefreshToken(
+        user_id=user.id,
+        token_hash="0" * 64,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    refresh_session.id = uuid4()
+    session.added_refresh_token = refresh_session
     access_token, _ = create_access_token(
         user_id=user.id,
+        session_id=refresh_session.id,
         role=user.role,
         settings=jwt_settings,
     )
 
-    client, _ = authentication_client(user)
     with client:
         response = client.get(
             "/api/v1/users/me",

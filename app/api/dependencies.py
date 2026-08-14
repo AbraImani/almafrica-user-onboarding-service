@@ -1,5 +1,6 @@
 """Reusable API authentication dependencies."""
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -16,6 +17,7 @@ from app.core.security import (
     JWTConfigurationError,
     decode_access_token,
 )
+from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserRole
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -84,6 +86,7 @@ def get_current_user(
     try:
         payload = decode_access_token(credentials.credentials, settings=settings)
         user_id = UUID(payload["sub"])
+        session_id = UUID(payload["sid"])
     except (AccessTokenError, KeyError, TypeError, ValueError):
         raise invalid_access_token()
     except JWTConfigurationError as exc:
@@ -91,10 +94,20 @@ def get_current_user(
 
     try:
         user = session.scalar(select(User).where(User.id == user_id))
+        refresh_session = session.scalar(
+            select(RefreshToken).where(
+                RefreshToken.id == session_id,
+                RefreshToken.user_id == user_id,
+            )
+        )
     except SQLAlchemyError as exc:
         raise authentication_unavailable() from exc
 
-    if user is None:
+    if user is None or refresh_session is None:
+        raise invalid_access_token()
+    if refresh_session.revoked_at is not None:
+        raise invalid_access_token()
+    if refresh_session.expires_at <= datetime.now(timezone.utc):
         raise invalid_access_token()
     if user.role == UserRole.USER and not user.is_verified:
         raise invalid_access_token()

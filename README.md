@@ -128,7 +128,9 @@ current scope.
 
 End a refresh session with `POST /api/v1/auth/logout`, using the same request body
 as `/refresh`. Logout is idempotent: unknown or already-revoked tokens receive the
-same `200` response, while the persisted session remains unusable for refresh.
+same `200` response. Each access token contains the refresh-session UUID in its
+`sid` claim; protected endpoints reject both access and refresh tokens immediately
+after that session is revoked.
 
 ## Self-profile
 
