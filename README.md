@@ -111,3 +111,11 @@ python -m app.scripts.seed_admin
 The command normalizes the email, hashes the password with Argon2id, and creates a
 verified `ADMIN`. It is safe to run repeatedly: an existing email is reported and
 left unchanged.
+
+## Email verification tokens
+
+Verification tokens use 256 bits of cryptographically secure randomness and expire
+24 hours after generation. Only a SHA-256 digest is persisted; the raw token exists
+only in memory so a future delivery mechanism can send it to the user. Token records
+are single-use through `used_at`, and deleting a user automatically deletes their
+verification tokens through the database foreign key.
